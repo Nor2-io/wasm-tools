@@ -83,6 +83,7 @@ enum AstItem {
 enum Key {
     Variant(Vec<(String, Option<Type>)>),
     Handle(Handle),
+    Handle(Handle),
     Record(Vec<(String, Type)>),
     Flags(Vec<String>),
     Tuple(Vec<Type>),
@@ -654,6 +655,9 @@ impl<'a> Resolver<'a> {
                     ValueKind::Static(_) => {
                         bail!("static functions are only supported in resources")
                     }
+                    ValueKind::Static(_) => {
+                        bail!("static functions are only supported in resources")
+                    }
                 },
                 ast::InterfaceItem::Use(_) | ast::InterfaceItem::TypeDef(_) => {}
             }
@@ -1044,6 +1048,8 @@ impl<'a> Resolver<'a> {
                     .map(|case| (case.name.clone(), case.ty))
                     .collect::<Vec<_>>(),
             ),
+            TypeDefKind::Handle(h) => Key::Handle(*h),
+            TypeDefKind::Resource(_) => unreachable!("anonymous resources aren't supported"),
             TypeDefKind::Handle(h) => Key::Handle(*h),
             TypeDefKind::Resource(_) => unreachable!("anonymous resources aren't supported"),
             TypeDefKind::Record(r) => Key::Record(
