@@ -859,9 +859,17 @@ impl<'a> Resolver<'a> {
                 TypeDefKind::List(ty)
             }
             ast::Type::Handle(handle) => match handle {
-                ast::Handle::Shared { ty } => {
+                ast::Handle::Rc { ty } => {
                     let ty = self.resolve_type(ty)?;
                     TypeDefKind::Handle(Handle::Rc(ty))
+                }
+                ast::Handle::Owned { ty } => {
+                    let ty = self.resolve_type(ty)?;
+                    TypeDefKind::Handle(Handle::Owned(ty))
+                }
+                ast::Handle::Borrowed { ty } => {
+                    let ty = self.resolve_type(ty)?;
+                    TypeDefKind::Handle(Handle::Borrowed(ty))
                 }
             },
             ast::Type::Resource(resource) => {
@@ -1127,7 +1135,9 @@ fn collect_deps<'a>(ty: &ast::Type<'a>, deps: &mut Vec<ast::Id<'a>>) {
         ast::Type::Name(name) => deps.push(name.clone()),
         ast::Type::List(list) => collect_deps(list, deps),
         ast::Type::Handle(handle) => match handle {
-            ast::Handle::Shared { ty } => collect_deps(ty, deps),
+            ast::Handle::Rc { ty } => collect_deps(ty, deps),
+            ast::Handle::Owned { ty } => collect_deps(ty, deps),
+            ast::Handle::Borrowed { ty } => collect_deps(ty, deps),
         },
         ast::Type::Resource(resource) => {
             for method in resource.methods.iter() {

@@ -473,7 +473,9 @@ enum Type<'a> {
 }
 
 enum Handle<'a> {
-    Shared { ty: Box<Type<'a>> },
+    Rc { ty: Box<Type<'a>> },
+    Owned { ty: Box<Type<'a>> },
+    Borrowed { ty: Box<Type<'a>> },
 }
 
 struct Resource<'a> {
@@ -970,12 +972,28 @@ impl<'a> Type<'a> {
                 Ok(Type::Stream(Stream { element, end }))
             }
 
-            // shared<T>
+            // rc<T>
             Some((_span, Token::Rc)) => {
                 tokens.expect(Token::LessThan)?;
                 let ty = Box::new(Type::parse(tokens)?);
                 tokens.expect(Token::GreaterThan)?;
-                Ok(Type::Handle(Handle::Shared { ty }))
+                Ok(Type::Handle(Handle::Rc { ty }))
+            }
+
+            // owned<T>
+            Some((_span, Token::Owned)) => {
+                tokens.expect(Token::LessThan)?;
+                let ty = Box::new(Type::parse(tokens)?);
+                tokens.expect(Token::GreaterThan)?;
+                Ok(Type::Handle(Handle::Owned { ty }))
+            }
+
+            // borrowed<T>
+            Some((_span, Token::Borrowed)) => {
+                tokens.expect(Token::LessThan)?;
+                let ty = Box::new(Type::parse(tokens)?);
+                tokens.expect(Token::GreaterThan)?;
+                Ok(Type::Handle(Handle::Borrowed { ty }))
             }
 
             // `foo`

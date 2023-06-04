@@ -2,6 +2,8 @@ package foo:resources1
 
 interface resources1 {
   t1: func(a: rc<r1>) -> ()
+  t2: func(a: owned<r1>) -> ()
+  t3: func(a: borrowed<r1>) -> ()
 
   resource r1 {
     f1: func()
