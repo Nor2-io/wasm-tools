@@ -1,7 +1,7 @@
 package foo:resources-empty
 
 interface resources-empty {
-  t1: func(a: shared<r1>) -> ()
+  t1: func(a: rc<r1>) -> ()
 
   resource r1 {
   }

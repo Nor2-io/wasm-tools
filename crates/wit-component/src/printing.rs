@@ -343,8 +343,18 @@ impl WitPrinter {
 
     fn print_handle_type(&mut self, resolve: &Resolve, handle: &Handle) -> Result<()> {
         match handle {
-            Handle::Shared(ty) => {
-                self.output.push_str("shared<");
+            Handle::Rc(ty) => {
+                self.output.push_str("rc<");
+                self.print_type_name(resolve, ty)?;
+                self.output.push_str(">");
+            }
+            Handle::Owned(ty) => {
+                self.output.push_str("owned<");
+                self.print_type_name(resolve, ty)?;
+                self.output.push_str(">");
+            }
+            Handle::Borrowed(ty) => {
+                self.output.push_str("borrowed<");
                 self.print_type_name(resolve, ty)?;
                 self.output.push_str(">");
             }
@@ -486,8 +496,18 @@ impl WitPrinter {
                 self.output.push_str(" = ");
 
                 match handle {
-                    Handle::Shared(ty) => {
-                        self.output.push_str("shared<");
+                    Handle::Rc(ty) => {
+                        self.output.push_str("rc<");
+                        self.print_type_name(resolve, ty)?;
+                        self.output.push_str(">");
+                    }
+                    Handle::Owned(ty) => {
+                        self.output.push_str("owned<");
+                        self.print_type_name(resolve, ty)?;
+                        self.output.push_str(">");
+                    }
+                    Handle::Borrowed(ty) => {
+                        self.output.push_str("borrowed<");
                         self.print_type_name(resolve, ty)?;
                         self.output.push_str(">");
                     }
@@ -762,8 +782,10 @@ fn is_keyword(name: &str) -> bool {
         "use" | "type" | "func" | "u8" | "u16" | "u32" | "u64" | "s8" | "s16" | "s32" | "s64"
         | "float32" | "float64" | "char" | "resource" | "record" | "flags" | "variant" | "enum"
         | "union" | "bool" | "string" | "option" | "result" | "future" | "stream" | "list"
-        | "shared" | "_" | "as" | "from" | "static" | "interface" | "tuple" | "implements"
-        | "world" | "import" | "export" | "default" | "pkg" | "self" | "package" => true,
+        | "rc" | "owned" | "borrowed" | "_" | "as" | "from" | "static" | "interface" | "tuple"
+        | "implements" | "world" | "import" | "export" | "default" | "pkg" | "self" | "package" => {
+            true
+        }
         _ => false,
     }
 }

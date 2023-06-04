@@ -861,7 +861,7 @@ impl<'a> Resolver<'a> {
             ast::Type::Handle(handle) => match handle {
                 ast::Handle::Shared { ty } => {
                     let ty = self.resolve_type(ty)?;
-                    TypeDefKind::Handle(Handle::Shared(ty))
+                    TypeDefKind::Handle(Handle::Rc(ty))
                 }
             },
             ast::Type::Resource(resource) => {

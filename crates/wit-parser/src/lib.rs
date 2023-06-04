@@ -335,7 +335,9 @@ impl TypeDefKind {
             TypeDefKind::Record(_) => "record",
             TypeDefKind::Resource(_) => "resource",
             TypeDefKind::Handle(handle) => match handle {
-                Handle::Shared(_) => "shared",
+                Handle::Rc(_) => "shared",
+                Handle::Owned(_) => "owned",
+                Handle::Borrowed(_) => "borrowed",
             },
             TypeDefKind::Flags(_) => "flags",
             TypeDefKind::Tuple(_) => "tuple",
@@ -366,7 +368,9 @@ pub enum TypeOwner {
 
 #[derive(Debug, PartialEq, Eq, Hash, Copy, Clone)]
 pub enum Handle {
-    Shared(Type),
+    Rc(Type),
+    Owned(Type),
+    Borrowed(Type),
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Copy, Clone)]

@@ -971,7 +971,7 @@ impl<'a> Type<'a> {
             }
 
             // shared<T>
-            Some((_span, Token::Shared)) => {
+            Some((_span, Token::Rc)) => {
                 tokens.expect(Token::LessThan)?;
                 let ty = Box::new(Type::parse(tokens)?);
                 tokens.expect(Token::GreaterThan)?;

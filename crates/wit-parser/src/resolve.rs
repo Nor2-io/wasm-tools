@@ -193,7 +193,9 @@ impl Resolve {
                 TypeDefKind::Type(t) => self.all_bits_valid(t),
 
                 TypeDefKind::Handle(h) => match h {
-                    crate::Handle::Shared(_) => true,
+                    crate::Handle::Rc(_) => true,
+                    crate::Handle::Owned(_) => true,
+                    crate::Handle::Borrowed(_) => true,
                 },
 
                 TypeDefKind::Resource(_) => false,
@@ -784,7 +786,9 @@ impl Remap {
         use crate::TypeDefKind::*;
         match &mut ty.kind {
             Handle(handle) => match handle {
-                crate::Handle::Shared(ty) => self.update_ty(ty),
+                crate::Handle::Rc(ty) => self.update_ty(ty),
+                crate::Handle::Owned(ty) => self.update_ty(ty),
+                crate::Handle::Borrowed(ty) => self.update_ty(ty),
             },
             Resource(r) => {
                 for function in r.methods.iter_mut() {

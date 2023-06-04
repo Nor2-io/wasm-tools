@@ -66,8 +66,6 @@ pub enum Token {
     Float64,
     Char,
     Record,
-    Resource,
-    Shared,
     Flags,
     Variant,
     Enum,
@@ -89,6 +87,11 @@ pub enum Token {
     Export,
     World,
     Package,
+
+    Resource,
+    Rc,
+    Owned,
+    Borrowed,
 
     Id,
     ExplicitId,
@@ -262,7 +265,9 @@ impl<'a> Tokenizer<'a> {
                     "float64" => Float64,
                     "char" => Char,
                     "resource" => Resource,
-                    "shared" => Shared,
+                    "rc" => Rc,
+                    "owned" => Owned,
+                    "borrowed" => Borrowed,
                     "record" => Record,
                     "flags" => Flags,
                     "variant" => Variant,
@@ -506,7 +511,9 @@ impl Token {
             Float32 => "keyword `float32`",
             Float64 => "keyword `float64`",
             Char => "keyword `char`",
-            Shared => "keyword `shared`",
+            Rc => "keyword `rc`",
+            Owned => "keyword `owned`",
+            Borrowed => "keyword `borrowed`",
             Resource => "keyword `resource`",
             Record => "keyword `record`",
             Flags => "keyword `flags`",
@@ -674,11 +681,23 @@ fn test_tokenizer() {
 
     assert_eq!(collect("resource").unwrap(), vec![Token::Resource]);
 
-    assert_eq!(collect("shared").unwrap(), vec![Token::Shared]);
+    assert_eq!(collect("rc").unwrap(), vec![Token::Rc]);
     assert_eq!(
-        collect("shared<some-id>").unwrap(),
+        collect("rc<some-id>").unwrap(),
+        vec![Token::Rc, Token::LessThan, Token::Id, Token::GreaterThan]
+    );
+
+    assert_eq!(collect("owned").unwrap(), vec![Token::Rc]);
+    assert_eq!(
+        collect("owned<some-id>").unwrap(),
+        vec![Token::Owned, Token::LessThan, Token::Id, Token::GreaterThan]
+    );
+
+    assert_eq!(collect("borrowed").unwrap(), vec![Token::Rc]);
+    assert_eq!(
+        collect("borrowed<some-id>").unwrap(),
         vec![
-            Token::Shared,
+            Token::Borrowed,
             Token::LessThan,
             Token::Id,
             Token::GreaterThan
