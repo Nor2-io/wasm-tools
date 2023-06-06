@@ -309,8 +309,6 @@ pub enum TypeDefKind {
     Record(Record),
     Resource(Resource),
     Handle(Handle),
-    Resource(Resource),
-    Handle(Handle),
     Flags(Flags),
     Tuple(Tuple),
     Variant(Variant),
@@ -404,11 +402,6 @@ pub enum Int {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Record {
     pub fields: Vec<Field>,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct Resource {
-    pub methods: Vec<Function>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -546,7 +539,7 @@ pub struct Stream {
     pub end: Option<Type>,
 }
 
-#[derive(Clone, Default, Debug, PartialEq, Eq, Clone, Default, Debug, PartialEq, Eq)]
+#[derive(Clone, Default, Debug, PartialEq, Eq)]
 pub struct Docs {
     pub contents: Option<String>,
 }
@@ -618,7 +611,7 @@ impl Results {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Function {
     pub docs: Docs,
     pub name: String,
@@ -627,7 +620,7 @@ pub struct Function {
     pub results: Results,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FunctionKind {
     Freestanding,
     Method,
@@ -638,8 +631,6 @@ impl Function {
     pub fn item_name(&self) -> &str {
         match &self.kind {
             FunctionKind::Freestanding => &self.name,
-            FunctionKind::Method => &self.name,
-            FunctionKind::Static => &self.name,
             FunctionKind::Method => &self.name,
             FunctionKind::Static => &self.name,
         }

@@ -212,9 +212,6 @@ impl<'a> WorldItem<'a> {
             Some((_span, Token::Resource)) => {
                 TypeDef::parse_resource(tokens, docs).map(WorldItem::Type)
             }
-            Some((_span, Token::Resource)) => {
-                TypeDef::parse_resource(tokens, docs).map(WorldItem::Type)
-            }
             Some((_span, Token::Record)) => {
                 TypeDef::parse_record(tokens, docs).map(WorldItem::Type)
             }
@@ -463,8 +460,6 @@ enum Type<'a> {
     List(Box<Type<'a>>),
     Handle(Handle<'a>),
     Resource(Resource<'a>),
-    Handle(Handle<'a>),
-    Resource(Resource<'a>),
     Record(Record<'a>),
     Flags(Flags<'a>),
     Variant(Variant<'a>),
@@ -563,7 +558,6 @@ enum ResultList<'a> {
 enum ValueKind<'a> {
     Func(Func<'a>),
     Static(Func<'a>),
-    Static(Func<'a>),
 }
 
 struct Func<'a> {
@@ -606,11 +600,7 @@ impl<'a> Func<'a> {
 
 impl<'a> ValueKind<'a> {
     fn parse_func(tokens: &mut Tokenizer<'a>) -> Result<ValueKind<'a>> {
-    fn parse_func(tokens: &mut Tokenizer<'a>) -> Result<ValueKind<'a>> {
         Func::parse(tokens).map(ValueKind::Func)
-    }
-    fn parse_static(tokens: &mut Tokenizer<'a>) -> Result<ValueKind<'a>> {
-        Func::parse(tokens).map(ValueKind::Static)
     }
     fn parse_static(tokens: &mut Tokenizer<'a>) -> Result<ValueKind<'a>> {
         Func::parse(tokens).map(ValueKind::Static)
@@ -629,9 +619,6 @@ impl<'a> InterfaceItem<'a> {
             }
             Some((_span, Token::Variant)) => {
                 TypeDef::parse_variant(tokens, docs).map(InterfaceItem::TypeDef)
-            }
-            Some((_span, Token::Resource)) => {
-                TypeDef::parse_resource(tokens, docs).map(InterfaceItem::TypeDef)
             }
             Some((_span, Token::Resource)) => {
                 TypeDef::parse_resource(tokens, docs).map(InterfaceItem::TypeDef)
@@ -672,20 +659,6 @@ impl<'a> TypeDef<'a> {
                     let name = parse_id(tokens)?;
                     Ok(Flag { docs, name })
                 },
-            )?,
-        });
-        Ok(TypeDef { docs, name, ty })
-    }
-
-    fn parse_resource(tokens: &mut Tokenizer<'a>, docs: Docs<'a>) -> Result<Self> {
-        tokens.expect(Token::Resource)?;
-        let name = parse_id(tokens)?;
-        let ty = Type::Resource(Resource {
-            methods: parse_list(
-                tokens,
-                Token::LeftBrace,
-                Token::RightBrace,
-                |docs, tokens| Ok(Value::parse(tokens, docs)?),
             )?,
         });
         Ok(TypeDef { docs, name, ty })
@@ -814,32 +787,7 @@ impl<'a> Value<'a> {
                 (name, kind)
             }
         };
-        let name = match tokens.next()? {
-            Some((_, Token::Static)) => None,
-            Some((span, Token::Id)) => Some(Id {
-                name: tokens.parse_id(span)?,
-                span,
-            }),
-            Some((span, Token::ExplicitId)) => Some(Id {
-                name: tokens.parse_explicit_id(span)?,
-                span,
-            }),
-            other => Err(err_expected(tokens, "static or an identifier", other))?,
-        };
 
-        let (name, kind) = match name {
-            Some(name) => {
-                tokens.expect(Token::Colon)?;
-                let kind = ValueKind::parse_func(tokens)?;
-                (name, kind)
-            }
-            None => {
-                let name = parse_id(tokens)?;
-                tokens.expect(Token::Colon)?;
-                let kind = ValueKind::parse_static(tokens)?;
-                (name, kind)
-            }
-        };
         Ok(Value { docs, name, kind })
     }
 }

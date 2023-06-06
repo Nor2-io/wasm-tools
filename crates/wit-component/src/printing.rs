@@ -297,12 +297,6 @@ impl WitPrinter {
                     TypeDefKind::Resource(_) => {
                         bail!("resolve has an unnamed resource type");
                     }
-                    TypeDefKind::Handle(h) => {
-                        self.print_handle_type(resolve, h)?;
-                    }
-                    TypeDefKind::Resource(_) => {
-                        bail!("resolve has an unnamed resource type");
-                    }
                     TypeDefKind::Tuple(t) => {
                         self.print_tuple_type(resolve, t)?;
                     }
@@ -446,12 +440,6 @@ impl WitPrinter {
             Type::Id(id) => {
                 let ty = &resolve.types[*id];
                 match &ty.kind {
-                    TypeDefKind::Handle(h) => {
-                        self.declare_handle(resolve, ty.name.as_deref(), h)?
-                    }
-                    TypeDefKind::Resource(r) => {
-                        self.declare_resource(resolve, ty.name.as_deref(), r)?
-                    }
                     TypeDefKind::Handle(h) => {
                         self.declare_handle(resolve, ty.name.as_deref(), h)?
                     }

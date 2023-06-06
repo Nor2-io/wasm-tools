@@ -66,8 +66,6 @@ pub enum Token {
     Float64,
     Char,
     Record,
-    Resource,
-    Shared,
     Flags,
     Variant,
     Enum,
