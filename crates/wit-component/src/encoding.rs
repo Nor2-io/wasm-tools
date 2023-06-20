@@ -81,6 +81,7 @@ use std::collections::HashMap;
 use std::hash::Hash;
 use wasm_encoder::*;
 use wasmparser::{Validator, WasmFeatures};
+use wit_parser::ResourceId;
 use wit_parser::{
     abi::{AbiVariant, WasmSignature, WasmType},
     Function, InterfaceId, LiveTypes, Resolve, Type, TypeDefKind, TypeId, TypeOwner, WorldItem,
@@ -287,13 +288,10 @@ impl TypeContents {
         match ty {
             Type::Id(id) => match &resolve.types[*id].kind {
                 TypeDefKind::Handle(h) => match h {
-                    wit_parser::Handle::Rc(ty) => Self::for_type(resolve, ty),
-                    wit_parser::Handle::Owned(ty) => Self::for_type(resolve, ty),
-                    wit_parser::Handle::Borrowed(ty) => Self::for_type(resolve, ty),
+                    wit_parser::Handle::Rc(id) => todo!(), //Self::for_type(resolve, ty),
+                    wit_parser::Handle::Owned(tyid) => todo!(), //Self::for_type(resolve, ty),
+                    wit_parser::Handle::Borrowed(id) => todo!(), //Self::for_type(resolve, ty),
                 },
-                TypeDefKind::Resource(..) => {
-                    todo!();
-                }
                 TypeDefKind::Record(r) => Self::for_types(resolve, r.fields.iter().map(|f| &f.ty)),
                 TypeDefKind::Tuple(t) => Self::for_types(resolve, t.types.iter()),
                 TypeDefKind::Flags(_) => Self::empty(),
@@ -363,6 +361,9 @@ pub struct EncodingState<'a> {
     imported_instances: IndexMap<InterfaceId, u32>,
     imported_funcs: IndexMap<String, u32>,
     exported_instances: IndexMap<InterfaceId, u32>,
+
+    /// Map of resources defined within the component's root index space.
+    resource_map: HashMap<ResourceId, u32>,
 
     /// Map of types defined within the component's root index space.
     type_map: HashMap<TypeId, u32>,
@@ -1551,6 +1552,7 @@ impl ComponentEncoder {
             adapter_instances: IndexMap::new(),
             adapter_import_reallocs: IndexMap::new(),
             adapter_export_reallocs: IndexMap::new(),
+            resource_map: Default::default(),
             type_map: HashMap::new(),
             func_type_map: HashMap::new(),
             imported_instances: Default::default(),

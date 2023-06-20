@@ -51,6 +51,7 @@ impl<'a> Ast<'a> {
                         match item {
                             WorldItem::Use(u) => f(None, &u.from, Some(&u.names))?,
                             WorldItem::Type(_) => {}
+                            WorldItem::Resource(_) => {}
                             WorldItem::Import(Import { kind, .. }) => imports.push(kind),
                             WorldItem::Export(Export { kind, .. }) => exports.push(kind),
                         }
@@ -199,6 +200,7 @@ enum WorldItem<'a> {
     Export(Export<'a>),
     Use(Use<'a>),
     Type(TypeDef<'a>),
+    Resource(ResourceDef<'a>),
 }
 
 impl<'a> WorldItem<'a> {
@@ -210,7 +212,7 @@ impl<'a> WorldItem<'a> {
             Some((_span, Token::Type)) => TypeDef::parse(tokens, docs).map(WorldItem::Type),
             Some((_span, Token::Flags)) => TypeDef::parse_flags(tokens, docs).map(WorldItem::Type),
             Some((_span, Token::Resource)) => {
-                TypeDef::parse_resource(tokens, docs).map(WorldItem::Type)
+                ResourceDef::parse_resource(tokens, docs).map(WorldItem::Resource)
             }
             Some((_span, Token::Record)) => {
                 TypeDef::parse_record(tokens, docs).map(WorldItem::Type)
@@ -333,6 +335,7 @@ impl<'a> Interface<'a> {
 }
 
 enum InterfaceItem<'a> {
+    Resource(ResourceDef<'a>),
     TypeDef(TypeDef<'a>),
     Value(Value<'a>),
     Use(Use<'a>),
@@ -436,6 +439,12 @@ pub struct Docs<'a> {
     docs: Vec<Cow<'a, str>>,
 }
 
+struct ResourceDef<'a> {
+    docs: Docs<'a>,
+    name: Id<'a>,
+    resource: Resource<'a>,
+}
+
 struct TypeDef<'a> {
     docs: Docs<'a>,
     name: Id<'a>,
@@ -459,7 +468,6 @@ enum Type<'a> {
     Name(Id<'a>),
     List(Box<Type<'a>>),
     Handle(Handle<'a>),
-    Resource(Resource<'a>),
     Record(Record<'a>),
     Flags(Flags<'a>),
     Variant(Variant<'a>),
@@ -473,9 +481,9 @@ enum Type<'a> {
 }
 
 enum Handle<'a> {
-    Rc { ty: Box<Type<'a>> },
-    Owned { ty: Box<Type<'a>> },
-    Borrowed { ty: Box<Type<'a>> },
+    Rc { id: Id<'a> },
+    Owned { id: Id<'a> },
+    Borrowed { id: Id<'a> },
 }
 
 struct Resource<'a> {
@@ -621,7 +629,7 @@ impl<'a> InterfaceItem<'a> {
                 TypeDef::parse_variant(tokens, docs).map(InterfaceItem::TypeDef)
             }
             Some((_span, Token::Resource)) => {
-                TypeDef::parse_resource(tokens, docs).map(InterfaceItem::TypeDef)
+                ResourceDef::parse_resource(tokens, docs).map(InterfaceItem::Resource)
             }
             Some((_span, Token::Record)) => {
                 TypeDef::parse_record(tokens, docs).map(InterfaceItem::TypeDef)
@@ -635,6 +643,26 @@ impl<'a> InterfaceItem<'a> {
             Some((_span, Token::Use)) => Use::parse(tokens).map(InterfaceItem::Use),
             other => Err(err_expected(tokens, "`type`, `resource` or `func`", other).into()),
         }
+    }
+}
+
+impl<'a> ResourceDef<'a> {
+    fn parse_resource(tokens: &mut Tokenizer<'a>, docs: Docs<'a>) -> Result<Self> {
+        tokens.expect(Token::Resource)?;
+        let name = parse_id(tokens)?;
+        let resource = Resource {
+            methods: parse_list(
+                tokens,
+                Token::LeftBrace,
+                Token::RightBrace,
+                |docs, tokens| Ok(Value::parse(tokens, docs)?),
+            )?,
+        };
+        Ok(ResourceDef {
+            docs,
+            name,
+            resource,
+        })
     }
 }
 
@@ -659,20 +687,6 @@ impl<'a> TypeDef<'a> {
                     let name = parse_id(tokens)?;
                     Ok(Flag { docs, name })
                 },
-            )?,
-        });
-        Ok(TypeDef { docs, name, ty })
-    }
-
-    fn parse_resource(tokens: &mut Tokenizer<'a>, docs: Docs<'a>) -> Result<Self> {
-        tokens.expect(Token::Resource)?;
-        let name = parse_id(tokens)?;
-        let ty = Type::Resource(Resource {
-            methods: parse_list(
-                tokens,
-                Token::LeftBrace,
-                Token::RightBrace,
-                |docs, tokens| Ok(Value::parse(tokens, docs)?),
             )?,
         });
         Ok(TypeDef { docs, name, ty })
@@ -976,25 +990,40 @@ impl<'a> Type<'a> {
             // rc<T>
             Some((_span, Token::Rc)) => {
                 tokens.expect(Token::LessThan)?;
-                let ty = Box::new(Type::parse(tokens)?);
+                let ty = Type::parse(tokens)?;
+
+                let Type::Name(id) = ty else {
+                    bail!("owned handle can only be used with resources");
+                };
+
                 tokens.expect(Token::GreaterThan)?;
-                Ok(Type::Handle(Handle::Rc { ty }))
+                Ok(Type::Handle(Handle::Rc { id }))
             }
 
             // owned<T>
             Some((_span, Token::Owned)) => {
                 tokens.expect(Token::LessThan)?;
-                let ty = Box::new(Type::parse(tokens)?);
+                let ty = Type::parse(tokens)?;
+
+                let Type::Name(id) = ty else {
+                    bail!("owned handle can only be used with resources");
+                };
+
                 tokens.expect(Token::GreaterThan)?;
-                Ok(Type::Handle(Handle::Owned { ty }))
+                Ok(Type::Handle(Handle::Owned { id }))
             }
 
             // borrowed<T>
             Some((_span, Token::Borrowed)) => {
                 tokens.expect(Token::LessThan)?;
-                let ty = Box::new(Type::parse(tokens)?);
+                let ty = Type::parse(tokens)?;
+
+                let Type::Name(id) = ty else {
+                    bail!("owned handle can only be used with resources");
+                };
+
                 tokens.expect(Token::GreaterThan)?;
-                Ok(Type::Handle(Handle::Borrowed { ty }))
+                Ok(Type::Handle(Handle::Borrowed { id }))
             }
 
             // `foo`

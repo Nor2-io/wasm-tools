@@ -26,6 +26,7 @@ pub fn validate_id(s: &str) -> Result<()> {
 pub type WorldId = Id<World>;
 pub type InterfaceId = Id<Interface>;
 pub type TypeId = Id<TypeDef>;
+pub type ResourceId = Id<ResourceDef>;
 
 /// Representation of a parsed WIT package which has not resolved external
 /// dependencies yet.
@@ -289,11 +290,25 @@ pub struct Interface {
     /// export name here matches the name listed in the `TypeDef`.
     pub types: IndexMap<String, TypeId>,
 
+    /// Exported resources from this interface.
+    ///
+    /// Export names are listed within the types themselves. Note that the
+    /// export name here matches the name listed in the `ResourceDef`.
+    pub resources: IndexMap<String, ResourceId>,
+
     /// Exported functions from this interface.
     pub functions: IndexMap<String, Function>,
 
     /// The package that owns this interface.
     pub package: Option<PackageId>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ResourceDef {
+    pub docs: Docs,
+    pub resource: Resource,
+    pub name: Option<String>,
+    pub owner: TypeOwner,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -307,7 +322,6 @@ pub struct TypeDef {
 #[derive(Debug, Clone, PartialEq)]
 pub enum TypeDefKind {
     Record(Record),
-    Resource(Resource),
     Handle(Handle),
     Flags(Flags),
     Tuple(Tuple),
@@ -333,9 +347,8 @@ impl TypeDefKind {
     pub fn as_str(&self) -> &'static str {
         match self {
             TypeDefKind::Record(_) => "record",
-            TypeDefKind::Resource(_) => "resource",
             TypeDefKind::Handle(handle) => match handle {
-                Handle::Rc(_) => "shared",
+                Handle::Rc(_) => "rc",
                 Handle::Owned(_) => "owned",
                 Handle::Borrowed(_) => "borrowed",
             },
@@ -368,9 +381,9 @@ pub enum TypeOwner {
 
 #[derive(Debug, PartialEq, Eq, Hash, Copy, Clone)]
 pub enum Handle {
-    Rc(Type),
-    Owned(Type),
-    Borrowed(Type),
+    Rc(ResourceId),
+    Owned(ResourceId),
+    Borrowed(ResourceId),
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Copy, Clone)]

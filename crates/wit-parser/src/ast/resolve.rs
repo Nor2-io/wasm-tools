@@ -15,6 +15,7 @@ pub struct Resolver<'a> {
     asts: Vec<ast::Ast<'a>>,
 
     // Arenas that get plumbed to the final `UnresolvedPackage`
+    resources: Arena<ResourceDef>,
     types: Arena<TypeDef>,
     interfaces: Arena<Interface>,
     worlds: Arena<World>,
@@ -49,6 +50,10 @@ pub struct Resolver<'a> {
 
     /// All interfaces that are present within `self.foreign_deps`.
     foreign_interfaces: HashSet<InterfaceId>,
+
+    /// The current resource lookup scope which will eventually make its way into
+    /// `self.interface_types`.
+    resource_lookup: IndexMap<&'a str, (ResourceId, Span)>,
 
     /// The current type lookup scope which will eventually make its way into
     /// `self.interface_types`.
@@ -253,6 +258,7 @@ impl<'a> Resolver<'a> {
             docs: Docs::default(),
             functions: IndexMap::new(),
             package: None,
+            resources: IndexMap::new(),
         })
     }
 
@@ -494,6 +500,7 @@ impl<'a> Resolver<'a> {
                 ast::WorldItem::Use(u) => Some(TypeItem::Use(u)),
                 ast::WorldItem::Type(t) => Some(TypeItem::Def(t)),
                 ast::WorldItem::Import(_) | ast::WorldItem::Export(_) => None,
+                ast::WorldItem::Resource(_) => todo!(),
             }),
         )?;
 
@@ -527,7 +534,9 @@ impl<'a> Resolver<'a> {
         for item in world.items.iter() {
             let (docs, kind, desc, spans, interfaces) = match item {
                 // handled in `resolve_types`
-                ast::WorldItem::Use(_) | ast::WorldItem::Type(_) => continue,
+                ast::WorldItem::Use(_) | ast::WorldItem::Resource(_) | ast::WorldItem::Type(_) => {
+                    continue
+                }
 
                 ast::WorldItem::Import(import) => (
                     &import.docs,
@@ -624,6 +633,7 @@ impl<'a> Resolver<'a> {
                 ast::InterfaceItem::Use(u) => Some(TypeItem::Use(u)),
                 ast::InterfaceItem::TypeDef(t) => Some(TypeItem::Def(t)),
                 ast::InterfaceItem::Value(_) => None,
+                ast::InterfaceItem::Resource(_) => None,
             }),
         )?;
 
@@ -656,6 +666,15 @@ impl<'a> Resolver<'a> {
                     }
                 },
                 ast::InterfaceItem::Use(_) | ast::InterfaceItem::TypeDef(_) => {}
+                ast::InterfaceItem::Resource(resource) => {
+                    //TODO: FIX
+                    //let resource_id = self.resolve_resource(&resource.name)?;
+                    //let prev = self.interfaces[interface_id]
+                    //    .resources
+                    //    .insert(resource.name.name.to_owned(), resource_id);
+                    //
+                    //assert!(prev.is_none());
+                }
             }
         }
 
@@ -859,59 +878,19 @@ impl<'a> Resolver<'a> {
                 TypeDefKind::List(ty)
             }
             ast::Type::Handle(handle) => match handle {
-                ast::Handle::Rc { ty } => {
-                    let ty = self.resolve_type(ty)?;
-                    TypeDefKind::Handle(Handle::Rc(ty))
+                ast::Handle::Rc { id } => {
+                    let id = self.resolve_resource_handle(id)?;
+                    TypeDefKind::Handle(Handle::Rc(id))
                 }
-                ast::Handle::Owned { ty } => {
-                    let ty = self.resolve_type(ty)?;
-                    TypeDefKind::Handle(Handle::Owned(ty))
+                ast::Handle::Owned { id } => {
+                    let id = self.resolve_resource_handle(id)?;
+                    TypeDefKind::Handle(Handle::Owned(id))
                 }
-                ast::Handle::Borrowed { ty } => {
-                    let ty = self.resolve_type(ty)?;
-                    TypeDefKind::Handle(Handle::Borrowed(ty))
+                ast::Handle::Borrowed { id } => {
+                    let id = self.resolve_resource_handle(id)?;
+                    TypeDefKind::Handle(Handle::Borrowed(id))
                 }
             },
-            ast::Type::Resource(resource) => {
-                let methods = resource
-                    .methods
-                    .iter()
-                    .map(|value| {
-                        let (func, kind) = match &value.kind {
-                            ValueKind::Func(func) => (func, FunctionKind::Method),
-                            ValueKind::Static(func) => (func, FunctionKind::Static),
-                        };
-
-                        let params = func
-                            .params
-                            .iter()
-                            .map(|(id, ty)| (id.name.to_owned(), self.resolve_type(ty).unwrap()))
-                            .collect();
-
-                        let results = match &func.results {
-                            ResultList::Named(results) => {
-                                let results = results
-                                    .into_iter()
-                                    .map(|(id, ty)| {
-                                        (id.name.to_owned(), self.resolve_type(&ty).unwrap())
-                                    })
-                                    .collect();
-                                Results::Named(results)
-                            }
-                            ResultList::Anon(ty) => Results::Anon(self.resolve_type(&ty).unwrap()),
-                        };
-
-                        Ok(Function {
-                            docs: self.docs(&value.docs),
-                            name: value.name.name.to_string(),
-                            kind: kind,
-                            params: params,
-                            results: results,
-                        })
-                    })
-                    .collect::<Result<Vec<_>>>()?;
-                TypeDefKind::Resource(Resource { methods })
-            }
             ast::Type::Record(record) => {
                 let fields = record
                     .fields
@@ -1045,7 +1024,6 @@ impl<'a> Resolver<'a> {
                     .collect::<Vec<_>>(),
             ),
             TypeDefKind::Handle(h) => Key::Handle(*h),
-            TypeDefKind::Resource(_) => unreachable!("anonymous resources aren't supported"),
             TypeDefKind::Record(r) => Key::Record(
                 r.fields
                     .iter()
@@ -1113,7 +1091,59 @@ impl<'a> Resolver<'a> {
             ResultList::Anon(ty) => Ok(Results::Anon(self.resolve_type(ty)?)),
         }
     }
+
+    fn resolve_resource_handle(&mut self, id: &ast::Id) -> Result<ResourceId> {
+        match self.resource_lookup.get(id.name) {
+            Some((id, _)) => Ok(*id),
+            None => bail!(Error {
+                span: id.span,
+                msg: format!("name `{name}` is not defined", name = id.name),
+            }),
+        }
+    }
+
+    fn resolve_resource(&mut self, resource: &Resource) -> Result<ResourceId> {
+        //let methods = resource
+        //    .methods
+        //    .iter()
+        //    .map(|value| {
+        //        let (func, kind) = match &value.kind {
+        //            ValueKind::Func(func) => (func, FunctionKind::Method),
+        //            ValueKind::Static(func) => (func, FunctionKind::Static),
+        //        };
+        //
+        //        let params = func
+        //            .params
+        //            .iter()
+        //            .map(|(id, ty)| (id.name.to_owned(), self.resolve_type(ty).unwrap()))
+        //            .collect();
+        //
+        //        let results = match &func.results {
+        //            ResultList::Named(results) => {
+        //                let results = results
+        //                    .into_iter()
+        //                    .map(|(id, ty)| (id.name.to_owned(), self.resolve_type(&ty).unwrap()))
+        //                    .collect();
+        //                Results::Named(results)
+        //            }
+        //            ResultList::Anon(ty) => Results::Anon(self.resolve_type(&ty).unwrap()),
+        //        };
+        //
+        //        Ok(Function {
+        //            docs: self.docs(&value.docs),
+        //            name: value.name.name.to_string(),
+        //            kind: kind,
+        //            params: params,
+        //            results: results,
+        //        })
+        //    })
+        //    .collect::<Result<Vec<_>>>()?;
+        //Ok(ResourceId)
+        todo!("resolve_resource")
+    }
 }
+
+fn collect_deps_resource<'a>(id: &ast::Id<'a>, deps: &mut Vec<ast::Id<'a>>) {}
 
 fn collect_deps<'a>(ty: &ast::Type<'a>, deps: &mut Vec<ast::Id<'a>>) {
     match ty {
@@ -1135,31 +1165,10 @@ fn collect_deps<'a>(ty: &ast::Type<'a>, deps: &mut Vec<ast::Id<'a>>) {
         ast::Type::Name(name) => deps.push(name.clone()),
         ast::Type::List(list) => collect_deps(list, deps),
         ast::Type::Handle(handle) => match handle {
-            ast::Handle::Rc { ty } => collect_deps(ty, deps),
-            ast::Handle::Owned { ty } => collect_deps(ty, deps),
-            ast::Handle::Borrowed { ty } => collect_deps(ty, deps),
+            ast::Handle::Rc { id } => collect_deps_resource(id, deps),
+            ast::Handle::Owned { id } => collect_deps_resource(id, deps),
+            ast::Handle::Borrowed { id } => collect_deps_resource(id, deps),
         },
-        ast::Type::Resource(resource) => {
-            for method in resource.methods.iter() {
-                let func = match &method.kind {
-                    ValueKind::Func(func) => func,
-                    ValueKind::Static(func) => func,
-                };
-
-                for (_, ty) in func.params.iter() {
-                    collect_deps(ty, deps);
-                }
-
-                match &func.results {
-                    ResultList::Named(results) => {
-                        for (_, ty) in results.iter() {
-                            collect_deps(ty, deps);
-                        }
-                    }
-                    ResultList::Anon(ty) => collect_deps(&ty, deps),
-                }
-            }
-        }
         ast::Type::Record(record) => {
             for field in record.fields.iter() {
                 collect_deps(&field.ty, deps);

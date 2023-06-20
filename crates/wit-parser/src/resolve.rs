@@ -1,8 +1,9 @@
 use crate::ast::lex::Span;
 use crate::ast::{parse_use_path, AstUsePath};
 use crate::{
-    Error, Function, Interface, InterfaceId, PackageName, Results, Type, TypeDef, TypeDefKind,
-    TypeId, TypeOwner, UnresolvedPackage, World, WorldId, WorldItem, WorldKey,
+    Error, Function, Interface, InterfaceId, PackageName, ResourceDef, ResourceId, Results, Type,
+    TypeDef, TypeDefKind, TypeId, TypeOwner, UnresolvedPackage, World, WorldId, WorldItem,
+    WorldKey,
 };
 use anyhow::{anyhow, bail, Context, Result};
 use id_arena::{Arena, Id};
@@ -28,6 +29,7 @@ use std::path::{Path, PathBuf};
 pub struct Resolve {
     pub worlds: Arena<World>,
     pub interfaces: Arena<Interface>,
+    pub resources: Arena<ResourceDef>,
     pub types: Arena<TypeDef>,
     pub packages: Arena<Package>,
     pub package_names: IndexMap<PackageName, PackageId>,
@@ -198,7 +200,6 @@ impl Resolve {
                     crate::Handle::Borrowed(_) => true,
                 },
 
-                TypeDefKind::Resource(_) => false,
                 TypeDefKind::Record(r) => r.fields.iter().all(|f| self.all_bits_valid(&f.ty)),
                 TypeDefKind::Tuple(t) => t.types.iter().all(|t| self.all_bits_valid(t)),
 
@@ -239,6 +240,7 @@ impl Resolve {
             world_map,
             interfaces_to_add,
             worlds_to_add,
+            resource_map,
             ..
         } = map;
 
@@ -267,7 +269,19 @@ impl Resolve {
             interfaces,
             packages,
             package_names,
+            resources,
         } = resolve;
+
+        let mut moved_resources = Vec::new();
+        for (id, mut resource) in resources {
+            let new_id = resource_map.get(&id).copied().unwrap_or_else(|| {
+                moved_resources.push(id);
+                remap.update_resourcedef(&mut resource);
+                self.resources.alloc(resource)
+            });
+            assert_eq!(remap.resources.len(), id.index());
+            remap.resources.push(new_id);
+        }
 
         let mut moved_types = Vec::new();
         for (id, mut ty) in types {
@@ -578,6 +592,7 @@ impl Resolve {
 /// old-ids to new-ids after the merge.
 #[derive(Default)]
 pub struct Remap {
+    pub resources: Vec<ResourceId>,
     pub types: Vec<TypeId>,
     pub interfaces: Vec<InterfaceId>,
     pub worlds: Vec<WorldId>,
@@ -780,33 +795,22 @@ impl Remap {
         Ok(())
     }
 
+    fn update_resourcedef(&self, resource: &mut ResourceDef) {
+        for function in &mut resource.resource.methods {
+            self.update_function(function);
+        }
+    }
+
     fn update_typedef(&self, ty: &mut TypeDef) {
         // NB: note that `ty.owner` is not updated here since interfaces
         // haven't been mapped yet and that's done in a separate step.
         use crate::TypeDefKind::*;
         match &mut ty.kind {
             Handle(handle) => match handle {
-                crate::Handle::Rc(ty) => self.update_ty(ty),
-                crate::Handle::Owned(ty) => self.update_ty(ty),
-                crate::Handle::Borrowed(ty) => self.update_ty(ty),
-            },
-            Resource(r) => {
-                for function in r.methods.iter_mut() {
-                    for (_, ty) in function.params.iter_mut() {
-                        self.update_ty(ty);
-                    }
-                    match &mut function.results {
-                        Results::Named(results) => {
-                            for (_, ty) in results {
-                                self.update_ty(ty);
-                            }
-                        }
-                        Results::Anon(ty) => {
-                            self.update_ty(ty);
-                        }
-                    }
+                crate::Handle::Rc(id) | crate::Handle::Owned(id) | crate::Handle::Borrowed(id) => {
+                    self.update_resource(id);
                 }
-            }
+            },
             Record(r) => {
                 for field in r.fields.iter_mut() {
                     self.update_ty(&mut field.ty);
@@ -855,6 +859,11 @@ impl Remap {
 
             Unknown => unreachable!(),
         }
+    }
+
+    fn update_resource(&self, resource: &mut ResourceId) {
+        //TODO: This seems like a complete waste?
+        *resource = self.resources[resource.index()];
     }
 
     fn update_ty(&self, ty: &mut Type) {
@@ -1091,6 +1100,10 @@ struct MergeMap<'a> {
     /// found to be equivalent.
     type_map: HashMap<TypeId, TypeId>,
 
+    /// A map of resource ids in `from` to those in `into` for those that are
+    /// found to be equivalent.
+    resource_map: HashMap<ResourceId, ResourceId>,
+
     /// A map of world ids in `from` to those in `into` for those that are
     /// found to be equivalent.
     world_map: HashMap<WorldId, WorldId>,
@@ -1118,6 +1131,7 @@ impl<'a> MergeMap<'a> {
             package_map: Default::default(),
             interface_map: Default::default(),
             type_map: Default::default(),
+            resource_map: Default::default(),
             world_map: Default::default(),
             interfaces_to_add: Default::default(),
             worlds_to_add: Default::default(),

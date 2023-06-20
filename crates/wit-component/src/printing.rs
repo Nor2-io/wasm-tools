@@ -43,6 +43,15 @@ impl WitPrinter {
     fn print_interface(&mut self, resolve: &Resolve, id: InterfaceId) -> Result<()> {
         let interface = &resolve.interfaces[id];
 
+        self.print_resources(
+            resolve,
+            TypeOwner::Interface(id),
+            interface
+                .resources
+                .iter()
+                .map(|(name, id)| (name.as_str(), *id)),
+        )?;
+
         self.print_types(
             resolve,
             TypeOwner::Interface(id),
@@ -60,6 +69,71 @@ impl WitPrinter {
             self.output.push_str(": ");
             self.print_function(resolve, func)?;
             self.output.push_str("\n");
+        }
+
+        Ok(())
+    }
+
+    fn print_resources<'a>(
+        &mut self,
+        resolve: &Resolve,
+        owner: TypeOwner,
+        resources: impl Iterator<Item = (&'a str, ResourceId)>,
+    ) -> Result<()> {
+        // Partition types defined in this interface into either those imported
+        // from foreign interfaces or those defined locally.
+        let mut resources_to_declare = Vec::new();
+        //TODO: Fix resource imports
+        let mut resources_to_import: Vec<(_, Vec<_>)> = Vec::new();
+        for (name, resource_id) in resources {
+            let resource = &resolve.resources[resource_id];
+
+            for function in &resource.resource.methods {
+                self.print_function(resolve, function)?;
+            }
+
+            resources_to_declare.push(resource_id);
+        }
+
+        // Generate a `use` statement for all imported types.
+        let my_pkg = match owner {
+            TypeOwner::Interface(id) => resolve.interfaces[id].package.unwrap(),
+            TypeOwner::World(id) => resolve.worlds[id].package.unwrap(),
+            TypeOwner::None => unreachable!(),
+        };
+        let amt_to_import = resources_to_import.len();
+        for (owner, tys) in resources_to_import {
+            write!(&mut self.output, "use ")?;
+            let id = match owner {
+                TypeOwner::Interface(id) => id,
+                // it's only possible to import resources from interfaces at
+                // this time.
+                _ => unreachable!(),
+            };
+            self.print_path_to_interface(resolve, id, my_pkg)?;
+            write!(&mut self.output, ".{{")?;
+            for (i, (my_name, other_name)) in tys.into_iter().enumerate() {
+                if i > 0 {
+                    write!(&mut self.output, ", ")?;
+                }
+                if my_name == other_name {
+                    self.print_name(my_name);
+                } else {
+                    self.print_name(other_name);
+                    self.output.push_str(" as ");
+                    self.print_name(my_name);
+                }
+            }
+            writeln!(&mut self.output, "}}")?;
+        }
+
+        if amt_to_import > 0 && resources_to_declare.len() > 0 {
+            self.output.push_str("\n");
+        }
+
+        for id in resources_to_declare {
+            let resource = &resolve.resources[id];
+            self.declare_resource(resolve, resource.name.as_ref(), &resource.resource)?;
         }
 
         Ok(())
@@ -294,9 +368,6 @@ impl WitPrinter {
                     TypeDefKind::Handle(h) => {
                         self.print_handle_type(resolve, h)?;
                     }
-                    TypeDefKind::Resource(_) => {
-                        bail!("resolve has an unnamed resource type");
-                    }
                     TypeDefKind::Tuple(t) => {
                         self.print_tuple_type(resolve, t)?;
                     }
@@ -343,24 +414,34 @@ impl WitPrinter {
 
     fn print_handle_type(&mut self, resolve: &Resolve, handle: &Handle) -> Result<()> {
         match handle {
-            Handle::Rc(ty) => {
+            Handle::Rc(id) => {
                 self.output.push_str("rc<");
-                self.print_type_name(resolve, ty)?;
+                self.print_resource_name(resolve, id)?;
                 self.output.push_str(">");
             }
-            Handle::Owned(ty) => {
+            Handle::Owned(id) => {
                 self.output.push_str("owned<");
-                self.print_type_name(resolve, ty)?;
+                self.print_resource_name(resolve, id)?;
                 self.output.push_str(">");
             }
-            Handle::Borrowed(ty) => {
+            Handle::Borrowed(id) => {
                 self.output.push_str("borrowed<");
-                self.print_type_name(resolve, ty)?;
+                self.print_resource_name(resolve, id)?;
                 self.output.push_str(">");
             }
         }
 
         Ok(())
+    }
+
+    fn print_resource_name(&mut self, resolve: &Resolve, id: &ResourceId) -> Result<()> {
+        let resource = &resolve.resources[*id];
+        if let Some(name) = &resource.name {
+            self.print_name(name);
+            return Ok(());
+        }
+
+        bail!("resource name not defined");
     }
 
     fn print_tuple_type(&mut self, resolve: &Resolve, tuple: &Tuple) -> Result<()> {
@@ -443,9 +524,6 @@ impl WitPrinter {
                     TypeDefKind::Handle(h) => {
                         self.declare_handle(resolve, ty.name.as_deref(), h)?
                     }
-                    TypeDefKind::Resource(r) => {
-                        self.declare_resource(resolve, ty.name.as_deref(), r)?
-                    }
                     TypeDefKind::Record(r) => {
                         self.declare_record(resolve, ty.name.as_deref(), r)?
                     }
@@ -496,19 +574,19 @@ impl WitPrinter {
                 self.output.push_str(" = ");
 
                 match handle {
-                    Handle::Rc(ty) => {
+                    Handle::Rc(id) => {
                         self.output.push_str("rc<");
-                        self.print_type_name(resolve, ty)?;
+                        self.print_resource_name(resolve, id)?;
                         self.output.push_str(">");
                     }
-                    Handle::Owned(ty) => {
+                    Handle::Owned(id) => {
                         self.output.push_str("owned<");
-                        self.print_type_name(resolve, ty)?;
+                        self.print_resource_name(resolve, id)?;
                         self.output.push_str(">");
                     }
-                    Handle::Borrowed(ty) => {
+                    Handle::Borrowed(id) => {
                         self.output.push_str("borrowed<");
-                        self.print_type_name(resolve, ty)?;
+                        self.print_resource_name(resolve, id)?;
                         self.output.push_str(">");
                     }
                 }
@@ -524,7 +602,7 @@ impl WitPrinter {
     fn declare_resource(
         &mut self,
         resolve: &Resolve,
-        name: Option<&str>,
+        name: Option<&String>,
         resource: &Resource,
     ) -> Result<()> {
         match name {

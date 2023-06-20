@@ -581,6 +581,7 @@ impl WitPackageDecoder<'_> {
                     types: IndexMap::default(),
                     functions: IndexMap::new(),
                     package: None,
+                    resources: IndexMap::new(),
                 })
             });
 
@@ -635,6 +636,7 @@ impl WitPackageDecoder<'_> {
             types: IndexMap::default(),
             functions: IndexMap::new(),
             package: None,
+            resources: IndexMap::new(),
         };
 
         for (name, ty) in ty.exports.iter() {
@@ -907,8 +909,7 @@ impl WitPackageDecoder<'_> {
             | TypeDefKind::Result(_)
             | TypeDefKind::Handle(_) => {}
 
-            TypeDefKind::Resource(_)
-            | TypeDefKind::Record(_)
+            TypeDefKind::Record(_)
             | TypeDefKind::Enum(_)
             | TypeDefKind::Variant(_)
             | TypeDefKind::Union(_)

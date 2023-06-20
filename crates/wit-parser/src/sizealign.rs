@@ -36,7 +36,6 @@ impl SizeAlign {
             TypeDefKind::Future(_) => (4, 4),
             // A stream is represented as an index.
             TypeDefKind::Stream(_) => (4, 4),
-            TypeDefKind::Resource(_) => unreachable!(),
             TypeDefKind::Unknown => unreachable!(),
         }
     }

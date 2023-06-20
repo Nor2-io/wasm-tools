@@ -687,13 +687,13 @@ fn test_tokenizer() {
         vec![Token::Rc, Token::LessThan, Token::Id, Token::GreaterThan]
     );
 
-    assert_eq!(collect("owned").unwrap(), vec![Token::Rc]);
+    assert_eq!(collect("owned").unwrap(), vec![Token::Owned]);
     assert_eq!(
         collect("owned<some-id>").unwrap(),
         vec![Token::Owned, Token::LessThan, Token::Id, Token::GreaterThan]
     );
 
-    assert_eq!(collect("borrowed").unwrap(), vec![Token::Rc]);
+    assert_eq!(collect("borrowed").unwrap(), vec![Token::Borrowed]);
     assert_eq!(
         collect("borrowed<some-id>").unwrap(),
         vec![
